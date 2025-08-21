@@ -1,0 +1,32 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Cup Base -->
+  <ellipse cx="100" cy="170" rx="45" ry="8" fill="#E5E7EB" opacity="0.3"/>
+  
+  <!-- Cup -->
+  <path d="M60 120 C60 140, 75 160, 100 160 C125 160, 140 140, 140 120 L135 90 L65 90 Z" fill="#F3F4F6" stroke="#D1D5DB" stroke-width="2"/>
+  
+  <!-- Cup Handle -->
+  <path d="M140 105 C150 105, 155 110, 155 120 C155 130, 150 135, 140 135" fill="none" stroke="#D1D5DB" stroke-width="3"/>
+  
+  <!-- Coffee Surface -->
+  <ellipse cx="100" cy="95" rx="35" ry="8" fill="#8B4513"/>
+  
+  <!-- Leaves -->
+  <!-- Large Leaf 1 -->
+  <path d="M85 85 C75 75, 70 60, 75 45 C80 30, 95 25, 105 35 C100 50, 95 65, 85 85" fill="#10B981"/>
+  
+  <!-- Large Leaf 2 -->
+  <path d="M115 85 C125 75, 130 60, 125 45 C120 30, 105 25, 95 35 C100 50, 105 65, 115 85" fill="#059669"/>
+  
+  <!-- Small Leaf 3 -->
+  <path d="M100 80 C110 70, 115 55, 110 40 C105 25, 90 20, 80 30 C85 45, 90 60, 100 80" fill="#A7F3D0" opacity="0.8"/>
+  
+  <!-- Leaf Stems -->
+  <line x1="100" y1="85" x2="90" y2="65" stroke="#065F46" stroke-width="2"/>
+  <line x1="100" y1="85" x2="110" y2="65" stroke="#065F46" stroke-width="2"/>
+  <line x1="100" y1="85" x2="100" y2="60" stroke="#065F46" stroke-width="2"/>
+  
+  <!-- Leaf Details -->
+  <path d="M85 70 C90 65, 95 60, 100 65" fill="none" stroke="#065F46" stroke-width="1" opacity="0.6"/>
+  <path d="M115 70 C110 65, 105 60, 100 65" fill="none" stroke="#065F46" stroke-width="1" opacity="0.6"/>
+</svg>
