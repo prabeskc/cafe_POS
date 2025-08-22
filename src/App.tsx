@@ -4,16 +4,54 @@ import { CategorySidebar } from './components/CategorySidebar';
 import { ProductGrid } from './components/ProductGrid';
 import { CartSidebar } from './components/CartSidebar';
 import { MenuManagementModal } from './components/MenuManagementModal';
+import { Login } from './components/Login';
 import { usePosStore } from './store';
 
 function App() {
-  const { loadProducts, loadCategories, isMenuManagementModalOpen, setMenuManagementModalOpen } = usePosStore();
+  const { 
+    loadProducts, 
+    loadCategories, 
+    isMenuManagementModalOpen, 
+    setMenuManagementModalOpen,
+    // Authentication state and actions
+    isAuthenticated,
+    authLoading,
+    authError,
+    login,
+    verifyToken,
+    clearAuthError
+  } = usePosStore();
 
-  // Load products and categories from API on app start
+  // Check authentication status on app start
   useEffect(() => {
-    loadProducts();
-    loadCategories();
-  }, [loadProducts, loadCategories]);
+    const checkAuth = async () => {
+      const isValid = await verifyToken();
+      if (isValid) {
+        // Load initial data only if authenticated
+        await loadProducts();
+        await loadCategories();
+      }
+    };
+    
+    checkAuth();
+  }, [verifyToken, loadProducts, loadCategories]);
+
+  // Handle login
+  const handleLogin = async (username: string, password: string) => {
+    clearAuthError();
+    await login(username, password);
+  };
+
+  // Show login screen if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <Login 
+        onLogin={handleLogin}
+        isLoading={authLoading}
+        error={authError}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-white via-emerald-50 to-mint-100">

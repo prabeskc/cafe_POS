@@ -2,6 +2,25 @@ import { create } from 'zustand';
 import { Product, Category, CartItem, PaymentMethod, AppState } from '../types';
 import { menuApi, ordersApi, categoriesApi, MenuItem, Category as ApiCategory } from '../services/api';
 
+// Authentication types
+interface AuthState {
+  isAuthenticated: boolean;
+  token: string | null;
+  admin: {
+    id: string;
+    username: string;
+  } | null;
+  authLoading: boolean;
+  authError: string | null;
+}
+
+interface AuthActions {
+  login: (username: string, password: string) => Promise<void>;
+  logout: () => void;
+  verifyToken: () => Promise<boolean>;
+  clearAuthError: () => void;
+}
+
 // Default categories
 const defaultCategories: Category[] = [
   { id: 'all', name: 'all', displayName: 'All Items' },
@@ -63,7 +82,7 @@ const defaultProducts: Product[] = [
   },
 ];
 
-interface PosStore extends AppState {
+interface PosStore extends AppState, AuthState, AuthActions {
   // Loading states
   isLoading: boolean;
   error: string | null;
@@ -94,6 +113,9 @@ interface PosStore extends AppState {
   setAddItemModalOpen: (isOpen: boolean) => void;
   setMenuManagementModalOpen: (isOpen: boolean) => void;
   
+  // Sales data refresh
+  triggerSalesRefresh: () => void;
+  
   // Computed values
   getFilteredProducts: () => Product[];
   getCartTotal: () => { subtotal: number; tax: number; total: number };
@@ -101,6 +123,9 @@ interface PosStore extends AppState {
   // Utility functions
   convertMenuItemToProduct: (item: MenuItem) => Product;
   convertProductToMenuItem: (product: Product) => Omit<MenuItem, 'id' | 'created_at' | 'updated_at'>;
+  
+  // Comprehensive data refresh
+  refreshAllData: () => Promise<void>;
 }
 
 export const usePosStore = create<PosStore>((set, get) => ({
@@ -113,8 +138,20 @@ export const usePosStore = create<PosStore>((set, get) => ({
   paymentMethod: 'cash',
   isAddItemModalOpen: false,
   isMenuManagementModalOpen: false,
+  
+  // Sales data refresh trigger
+  lastOrderCompletedAt: null,
+  
+  // Loading states
   isLoading: false,
   error: null,
+
+  // Authentication state
+  isAuthenticated: false,
+  token: localStorage.getItem('noko_auth_token'),
+  admin: null,
+  authLoading: false,
+  authError: null,
 
   // Utility functions
   convertMenuItemToProduct: (item: MenuItem): Product => ({
@@ -137,12 +174,21 @@ export const usePosStore = create<PosStore>((set, get) => ({
   loadProducts: async (category?: string) => {
     try {
       set({ isLoading: true, error: null });
+      
       const menuItems = await menuApi.getAll(category);
+      
+      if (!menuItems || menuItems.length === 0) {
+        set({ products: defaultProducts, isLoading: false });
+        return;
+      }
+      
       const products = menuItems.map(get().convertMenuItemToProduct);
       set({ products, isLoading: false });
     } catch (error) {
+      // Fallback to default products if API fails
       set({ 
-        error: error instanceof Error ? error.message : 'Failed to load products',
+        products: defaultProducts,
+        error: `API Error: ${error instanceof Error ? error.message : 'Failed to load products'}. Using default products.`,
         isLoading: false 
       });
     }
@@ -386,8 +432,11 @@ export const usePosStore = create<PosStore>((set, get) => ({
 
       await ordersApi.create(orderData);
       
-      // Clear cart after successful order
-      set({ cart: [], isLoading: false });
+      // Clear cart after successful order and trigger sales refresh
+      set({ cart: [], isLoading: false, lastOrderCompletedAt: Date.now() });
+      
+      // Trigger immediate sales data refresh
+      get().triggerSalesRefresh();
     } catch (error) {
       set({ 
         error: error instanceof Error ? error.message : 'Failed to process order',
@@ -416,6 +465,33 @@ export const usePosStore = create<PosStore>((set, get) => ({
 
   setMenuManagementModalOpen: (isOpen) => {
     set({ isMenuManagementModalOpen: isOpen });
+  },
+
+  triggerSalesRefresh: () => {
+    set({ lastOrderCompletedAt: Date.now() });
+  },
+
+  // Comprehensive data refresh function
+  refreshAllData: async () => {
+    try {
+      set({ isLoading: true, error: null });
+      
+      // Refresh products and categories in parallel
+      await Promise.all([
+        get().loadProducts(),
+        get().loadCategories()
+      ]);
+      
+      // Trigger sales data refresh
+      get().triggerSalesRefresh();
+      
+      set({ isLoading: false });
+    } catch (error) {
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to refresh data',
+        isLoading: false 
+      });
+    }
   },
 
   // Computed values
@@ -451,5 +527,129 @@ export const usePosStore = create<PosStore>((set, get) => ({
     return { subtotal, tax, total };
   },
 
+  // Authentication methods
+  login: async (username: string, password: string) => {
+    try {
+      set({ authLoading: true, authError: null });
+      
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Login failed');
+      }
+      
+      if (data.success && data.token) {
+        // Store token in localStorage
+        localStorage.setItem('noko_auth_token', data.token);
+        
+        set({
+          isAuthenticated: true,
+          token: data.token,
+          admin: data.admin,
+          authLoading: false,
+          authError: null,
+        });
+        
+        // Load initial data after successful login
+        await get().refreshAllData();
+      } else {
+        throw new Error('Invalid response from server');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Login failed';
+      set({
+        authLoading: false,
+        authError: errorMessage,
+        isAuthenticated: false,
+        token: null,
+        admin: null,
+      });
+      localStorage.removeItem('noko_auth_token');
+      throw error;
+    }
+  },
+
+  logout: () => {
+    console.log('🚪 Logout function called');
+    localStorage.removeItem('noko_auth_token');
+    console.log('🗑️ Token removed from localStorage');
+    set({
+      isAuthenticated: false,
+      token: null,
+      admin: null,
+      authError: null,
+      // Clear sensitive data
+      cart: [],
+    });
+    console.log('✅ Authentication state cleared');
+    // Force a page reload to ensure clean state
+    window.location.reload();
+  },
+
+  verifyToken: async () => {
+    try {
+      const token = get().token || localStorage.getItem('noko_auth_token');
+      
+      if (!token) {
+        set({ isAuthenticated: false, admin: null });
+        return false;
+      }
+      
+      set({ authLoading: true });
+      
+      const response = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ token }),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        set({
+          isAuthenticated: true,
+          token,
+          admin: data.admin,
+          authLoading: false,
+          authError: null,
+        });
+        return true;
+      } else {
+        // Token is invalid
+        localStorage.removeItem('noko_auth_token');
+        set({
+          isAuthenticated: false,
+          token: null,
+          admin: null,
+          authLoading: false,
+        });
+        return false;
+      }
+    } catch (error) {
+      localStorage.removeItem('noko_auth_token');
+      set({
+        isAuthenticated: false,
+        token: null,
+        admin: null,
+        authLoading: false,
+        authError: error instanceof Error ? error.message : 'Token verification failed',
+      });
+      return false;
+    }
+  },
+
+  clearAuthError: () => {
+    set({ authError: null });
+  },
 
 }));

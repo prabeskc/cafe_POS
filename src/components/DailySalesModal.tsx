@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Calendar, TrendingUp, ShoppingCart, DollarSign, Package } from 'lucide-react';
+import { X, Calendar, TrendingUp, ShoppingCart, DollarSign, Package, RefreshCw } from 'lucide-react';
 import { ordersApi } from '../services/api';
+import { usePosStore } from '../store';
 
 interface DailySalesModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onRefresh?: () => void;
 }
 
 interface SalesData {
@@ -86,7 +88,8 @@ const mockSalesData: SalesData = {
   totalDays: 2
 };
 
-export function DailySalesModal({ isOpen, onClose }: DailySalesModalProps) {
+export function DailySalesModal({ isOpen, onClose, onRefresh }: DailySalesModalProps) {
+  const { lastOrderCompletedAt } = usePosStore();
   const [salesData, setSalesData] = useState<SalesData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,11 +100,16 @@ export function DailySalesModal({ isOpen, onClose }: DailySalesModalProps) {
     start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Last 7 days
     end: new Date().toISOString().split('T')[0]
   });
+  const lastOrderTimeRef = useRef<number | null>(null);
 
-  const fetchSalesData = async (forceRetry = false) => {
+  // Memoize dateRange to prevent unnecessary re-renders
+  const memoizedDateRange = useMemo(() => dateRange, [dateRange.start, dateRange.end]);
+
+  const fetchSalesData = useCallback(async (forceRetry = false) => {
     try {
       setIsLoading(true);
       setError(null);
+      setRetryCount(0);
       
       if (useMockData && !forceRetry) {
         // Use mock data if API failed previously
@@ -112,10 +120,20 @@ export function DailySalesModal({ isOpen, onClose }: DailySalesModalProps) {
         return;
       }
       
-      const data = await ordersApi.getSalesAnalytics(dateRange.start, dateRange.end);
-      setSalesData(data);
-      setRetryCount(0);
+      // Call the real API to get sales analytics
+      const apiSalesData = await ordersApi.getSalesAnalytics(
+        memoizedDateRange.start,
+        memoizedDateRange.end
+      );
+      
+      setSalesData(apiSalesData);
+      setIsLoading(false);
       setUseMockData(false);
+      
+      // Call external refresh callback if provided
+      if (onRefresh) {
+        onRefresh();
+      }
     } catch (err) {
       console.error('Sales analytics API error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch sales data';
@@ -131,33 +149,41 @@ export function DailySalesModal({ isOpen, onClose }: DailySalesModalProps) {
       setError(`${errorMessage}. Showing sample data instead.`);
       setSalesData(mockSalesData);
       setUseMockData(true);
-    } finally {
       setIsLoading(false);
     }
-  };
+  }, [useMockData, retryCount, onRefresh, memoizedDateRange.start, memoizedDateRange.end]);
 
   useEffect(() => {
     if (isOpen) {
       fetchSalesData();
     }
-  }, [isOpen, dateRange]);
+  }, [isOpen, memoizedDateRange, fetchSalesData]);
 
-  const handleDateRangeChange = (field: 'start' | 'end', value: string) => {
+  // Auto-refresh when new orders are completed
+  useEffect(() => {
+    if (lastOrderCompletedAt && lastOrderCompletedAt !== lastOrderTimeRef.current && isOpen) {
+      lastOrderTimeRef.current = lastOrderCompletedAt;
+      // Refresh sales data when a new order is completed
+      fetchSalesData(true);
+    }
+  }, [lastOrderCompletedAt, isOpen, fetchSalesData]);
+
+  const handleDateRangeChange = useCallback((field: 'start' | 'end', value: string) => {
     setDateRange(prev => ({ ...prev, [field]: value }));
-  };
+  }, []);
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = useCallback((amount: number) => {
     return `₹${amount.toFixed(2)}`;
-  };
+  }, []);
 
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-IN', {
       weekday: 'short',
       year: 'numeric',
       month: 'short',
       day: 'numeric'
     });
-  };
+  }, []);
 
   const selectedDayData = selectedDate 
     ? salesData?.dailySales.find(day => day.date === selectedDate)
@@ -174,12 +200,23 @@ export function DailySalesModal({ isOpen, onClose }: DailySalesModalProps) {
             <TrendingUp className="w-6 h-6 text-emerald-600" />
             <h2 className="text-xl font-semibold text-gray-800">Daily Sales Analytics</h2>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => fetchSalesData(true)}
+              disabled={isLoading}
+              className="flex items-center space-x-2 px-3 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Refresh sales data"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Date Range Selector */}

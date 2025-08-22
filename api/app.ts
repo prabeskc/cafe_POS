@@ -9,6 +9,7 @@ import menuRoutes from './routes/menu.js';
 import orderRoutes from './routes/orders.js';
 import categoryRoutes from './routes/categories.js';
 import testConnection from './config/database.js';
+import { authenticateToken } from './middleware/auth.js';
 
 // Test Supabase connection
 testConnection();
@@ -18,7 +19,23 @@ const app: express.Application = express();
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow localhost for development
+    if (origin.includes('localhost')) {
+      return callback(null, true);
+    }
+    
+    // Allow any Vercel deployment
+    if (origin.includes('.vercel.app')) {
+      return callback(null, true);
+    }
+    
+    // Reject other origins
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -37,10 +54,13 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 /**
  * API Routes
  */
+// Public routes (no authentication required)
 app.use('/api/auth', authRoutes);
-app.use('/api/menu', menuRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/categories', categoryRoutes);
+
+// Protected routes (authentication required)
+app.use('/api/menu', authenticateToken, menuRoutes);
+app.use('/api/orders', authenticateToken, orderRoutes);
+app.use('/api/categories', authenticateToken, categoryRoutes);
 
 /**
  * health

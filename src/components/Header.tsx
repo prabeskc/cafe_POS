@@ -1,16 +1,22 @@
 import React from 'react';
-import { Search, Settings, Printer, RotateCcw } from 'lucide-react';
+import { Search, Settings, Printer, RotateCcw, LogOut } from 'lucide-react';
 import { usePosStore } from '../store';
 import { usePrint } from '../hooks/usePrint';
 import nokoLogo from '../assets/noko-logo.svg';
 
 export function Header() {
-  const { searchQuery, setSearchQuery, setMenuManagementModalOpen, clearCart } = usePosStore();
+  const { searchQuery, setSearchQuery, setMenuManagementModalOpen, clearCart, logout, admin } = usePosStore();
   const { printReceipt } = usePrint();
 
   const handleClearCart = () => {
     if (window.confirm('Are you sure you want to clear the cart?')) {
       clearCart();
+    }
+  };
+
+  const handleLogout = () => {
+    if (window.confirm('Are you sure you want to logout?')) {
+      logout();
     }
   };
 
@@ -24,9 +30,16 @@ export function Header() {
             alt="NOKO Café Logo" 
             className="w-12 h-12"
           />
-          <h1 className="text-3xl font-bold text-white">
-            NOKO <span className="text-emerald-200 text-lg font-normal">café</span>
-          </h1>
+          <div>
+            <h1 className="text-3xl font-bold text-white">
+              NOKO <span className="text-emerald-200 text-lg font-normal">café</span>
+            </h1>
+            {admin && (
+              <p className="text-emerald-200 text-sm">
+                Welcome, {admin.username}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Search Bar */}
@@ -71,7 +84,14 @@ export function Header() {
             <span className="hidden sm:inline font-medium">Print</span>
           </button>
 
-
+          <button
+            onClick={handleLogout}
+            className="flex items-center space-x-2 px-4 py-2 text-white hover:text-emerald-600 hover:bg-white bg-red-500/90 backdrop-blur-sm rounded-xl transition-all duration-300 shadow-sm hover:shadow-lg transform hover:scale-105"
+            title="Logout"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="hidden sm:inline font-medium">Logout</span>
+          </button>
         </div>
       </div>
     </header>

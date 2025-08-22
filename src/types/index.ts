@@ -41,4 +41,5 @@ export interface AppState {
   paymentMethod: PaymentMethod;
   isAddItemModalOpen: boolean;
   isMenuManagementModalOpen: boolean;
+  lastOrderCompletedAt: number | null;
 }
