@@ -30,10 +30,3 @@ export interface JWTPayload {
   iat?: number;
   exp?: number;
 }
-
-export interface AuthRequest extends Request {
-  admin?: {
-    id: string;
-    username: string;
-  };
-}

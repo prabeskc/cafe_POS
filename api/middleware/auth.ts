@@ -1,7 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../config/database';
-import { JWTPayload, AuthRequest } from '../models/Admin';
+import { JWTPayload } from '../models/Admin';
+
+// Extend Express Request interface
+interface AuthRequest extends Request {
+  admin?: {
+    id: string;
+    username: string;
+  };
+}
 
 // JWT Secret - should match the one in auth routes
 const JWT_SECRET = process.env.JWT_SECRET || 'noko-cafe-secret-key-2024';
@@ -10,7 +18,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'noko-cafe-secret-key-2024';
 export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     // Get token from Authorization header
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
     if (!token) {
@@ -57,7 +65,7 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
 // Optional middleware for routes that can work with or without authentication
 export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
     if (token) {
