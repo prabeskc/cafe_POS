@@ -634,6 +634,166 @@ app.get('/api/orders', [
   }
 });
 
+// GET /api/orders/analytics/daily - Get daily sales analytics
+app.get('/api/orders/analytics/daily', [
+  authenticateToken,
+  query('startDate').optional().isISO8601().withMessage('Invalid start date format'),
+  query('endDate').optional().isISO8601().withMessage('Invalid end date format'),
+  handleValidationErrors
+], async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    // Set default date range (last 7 days) if not provided
+    const defaultEndDate = new Date();
+    const defaultStartDate = new Date(defaultEndDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+    
+    const start = startDate ? new Date(startDate as string) : defaultStartDate;
+    const end = endDate ? new Date(endDate as string) : defaultEndDate;
+    
+    // Ensure end date is end of day
+    end.setHours(23, 59, 59, 999);
+    
+    // Query orders from Supabase within date range
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*')
+      .gte('created_at', start.toISOString())
+      .lte('created_at', end.toISOString())
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      throw error;
+    }
+    
+    // Get menu items for item details
+    const { data: menuItems, error: menuError } = await supabase
+      .from('menu_items')
+      .select('*');
+    
+    if (menuError) {
+      throw menuError;
+    }
+    
+    // Process orders to calculate analytics
+    const dailySalesMap = new Map();
+    const itemStatsMap = new Map();
+    let totalRevenue = 0;
+    let totalTransactions = orders?.length || 0;
+    
+    orders?.forEach(order => {
+      const orderDate = new Date(order.created_at).toISOString().split('T')[0];
+      totalRevenue += order.total;
+      
+      // Initialize daily sales entry
+      if (!dailySalesMap.has(orderDate)) {
+        dailySalesMap.set(orderDate, {
+          date: orderDate,
+          transactions: 0,
+          revenue: 0,
+          items: [],
+          paymentMethods: { cash: 0, debit: 0, ewallet: 0 }
+        });
+      }
+      
+      const dayData = dailySalesMap.get(orderDate);
+      dayData.transactions += 1;
+      dayData.revenue += order.total;
+      
+      // Count payment methods
+      const paymentMethod = order.payment_method || 'cash';
+      if (dayData.paymentMethods[paymentMethod] !== undefined) {
+        dayData.paymentMethods[paymentMethod] += 1;
+      } else {
+        dayData.paymentMethods.cash += 1; // Default to cash for unknown methods
+      }
+      
+      // Process order items
+      order.items?.forEach((orderItem: any) => {
+        const menuItem = menuItems?.find(mi => mi.id === orderItem.itemId);
+        if (menuItem) {
+          const itemRevenue = menuItem.price * orderItem.quantity;
+          
+          // Add to daily items
+          const existingDayItem = dayData.items.find((item: any) => item.itemId === orderItem.itemId);
+          if (existingDayItem) {
+            existingDayItem.quantity += orderItem.quantity;
+            existingDayItem.revenue += itemRevenue;
+          } else {
+            dayData.items.push({
+              itemId: orderItem.itemId,
+              name: menuItem.name,
+              quantity: orderItem.quantity,
+              revenue: itemRevenue,
+              category: menuItem.category
+            });
+          }
+          
+          // Add to overall item stats
+          const itemKey = orderItem.itemId;
+          if (!itemStatsMap.has(itemKey)) {
+            itemStatsMap.set(itemKey, {
+              itemId: orderItem.itemId,
+              name: menuItem.name,
+              quantity: 0,
+              revenue: 0,
+              category: menuItem.category
+            });
+          }
+          
+          const itemStats = itemStatsMap.get(itemKey);
+          itemStats.quantity += orderItem.quantity;
+          itemStats.revenue += itemRevenue;
+        }
+      });
+    });
+    
+    // Convert maps to arrays and sort
+    const dailySales = Array.from(dailySalesMap.values())
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    const topItems = Array.from(itemStatsMap.values())
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10); // Top 10 items
+    
+    // Calculate average order value
+    const averageOrderValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
+    
+    // Calculate total days with sales
+    const totalDays = dailySales.length;
+    
+    const analyticsData = {
+      summary: {
+        totalRevenue,
+        totalTransactions,
+        averageOrderValue,
+        dateRange: {
+          start: start.toISOString().split('T')[0],
+          end: end.toISOString().split('T')[0]
+        }
+      },
+      dailySales,
+      topItems,
+      totalDays
+    };
+    
+    res.status(200).json({
+      success: true,
+      data: analyticsData
+    });
+    
+  } catch (error) {
+    console.error('Error fetching sales analytics:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Failed to fetch sales analytics',
+        code: 'ANALYTICS_ERROR'
+      }
+    });
+  }
+});
+
 /**
  * health
  */
