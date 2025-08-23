@@ -1,6 +1,20 @@
+# Ignore files that shouldn't be treated as serverless functions
+api/test/
+api/server.ts
 node_modules
 build
 dist
 .git
 .trae
 .log
+*.log
+*.md
+README.md
+API_README.md
+requirement.md
+test-password.js
+.env
+.env.local
+.env.production
+.env.staging
+.env.development
